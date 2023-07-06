@@ -150,3 +150,5 @@ media/
 
 sent_emails/
 
+# отправка электронной почты
+sent_emails/
