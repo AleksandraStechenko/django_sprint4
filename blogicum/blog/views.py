@@ -1,17 +1,16 @@
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import PermissionDenied
-from django.core.paginator import Paginator
 from django.views.generic import (
-    CreateView, DeleteView, ListView, UpdateView, DetailView
+    CreateView, DeleteView, DetailView, ListView, UpdateView
 )
 
-
-from .models import Post, Category, Comment, User
-from .forms import PostForm, CommentForm, ProfileForm
+from .forms import CommentForm, PostForm, ProfileForm
+from .models import Category, Comment, Post, User
 
 
 PUBLICATIONS_PER_PAGE = 10
