@@ -1,6 +1,6 @@
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
@@ -102,7 +102,8 @@ class PostCreateView(LoginRequiredMixin, PostMixin, CreateView):
 
     def form_valid(self, form):
         form.instance.author = self.request.user
-        form.instance.image = self.request.FILES['image']
+        if 'image' in self.request.FILES:
+            form.instance.image = self.request.FILES['image']
         self.object = form.save(commit=False)
         self.object.save()
         return super().form_valid(form)
@@ -150,13 +151,9 @@ class PostDeleteView(PostMixin,
 
 class CommentCreateView(LoginRequiredMixin, CreateView):
     """Добавление комментария."""
-
     model = Comment
     form_class = CommentForm
     template_name = 'blog/comment.html'
-    pk_url_kwarg = 'post_id'
-    queryset = Comment.objects.select_related('author').filter(
-        is_published=True)
 
     def form_valid(self, form):
         form.instance.author = get_object_or_404(
@@ -164,12 +161,6 @@ class CommentCreateView(LoginRequiredMixin, CreateView):
         form.instance.post = get_object_or_404(
             Post, id=self.kwargs['post_id'])
         return super().form_valid(form)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        comment = get_object_or_404(Comment, id=self.kwargs['comment_id'])
-        context['comment'] = comment
-        return context
 
     def get_success_url(self):
         post_id = self.kwargs['post_id']
@@ -181,55 +172,29 @@ class CommentUpdateView(LoginRequiredMixin, UpdateView):
     model = Comment
     form_class = CommentForm
     template_name = 'blog/comment.html'
-    pk_url_kwarg = 'comment_id'
-    queryset = Comment.objects.select_related('author').filter(
-        is_published=True)
 
     def dispatch(self, request, *args, **kwargs):
         self.object = self.get_object()
         if self.object.author != request.user:
-            return render(request, 'pages/403csrf.html', status=403)
+            raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        comment = get_object_or_404(Comment, id=self.kwargs['comment_id'])
-        context['comment'] = comment
-        return context
-
-    def get_object(self):
-        queryset = self.queryset.filter(pk=self.kwargs['comment_id'])
-        return super().get_object(queryset=queryset)
 
     def get_success_url(self):
         post_id = self.kwargs['post_id']
-        return reverse('blog:post_detail', kwargs={'id': post_id})
-
-    def form_valid(self, form):
-        form.instance.author = get_object_or_404(
-            User, username=self.request.user)
-        form.instance.post = get_object_or_404(
-            Post, id=self.kwargs['post_id'])
-        return super().form_valid(form)
+        return reverse('blog:post_detail', kwargs={'pk': post_id})
 
 
 class CommentDeleteView(LoginRequiredMixin, DeleteView):
     """Удаление комментария."""
     model = Comment
     template_name = 'blog/comment.html'
-    pk_url_kwarg = 'comment_id'
-    queryset = Comment.objects.select_related('author').filter(
-        is_published=True)
+    success_url = reverse_lazy('blog:index')
 
     def dispatch(self, request, *args, **kwargs):
         self.object = self.get_object()
         if self.object.author != request.user:
-            return render(request, 'pages/403csrf.html', status=403)
+            raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
-
-    def get_success_url(self):
-        post_id = self.kwargs['post_id']
-        return reverse('blog:post_detail', kwargs={'id': post_id})
 
 
 class ProfileDetailView(DetailView):
@@ -272,7 +237,7 @@ class ProfileDetailView(DetailView):
             User,
             username=self.kwargs.get('username'))
         post_images = [post.image for post in posts if post.image]
-        context['post_images'] = post_images
+        context['image'] = post_images
         return context
 
 
