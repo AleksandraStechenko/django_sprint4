@@ -85,10 +85,6 @@ class PostDetailView(DetailView):
         context = self.get_context_data(object=self.object)
         return self.render_to_response(context)
 
-    def get_success_url(self):
-        post_id = self.object.post.pk
-        return reverse('post_detail', kwargs={'pk': post_id})
-
 
 class PostMixin:
     """Mixin для публикаций."""
@@ -96,7 +92,20 @@ class PostMixin:
     template_name = 'blog/create.html'
 
 
-class PostCreateView(LoginRequiredMixin, PostMixin, CreateView):
+class PostSuccessUrlMixin:
+    """
+    Mixin для переадресации после создания или удаления поста.
+    """
+
+    def get_success_url(self):
+        return reverse('blog:profile',
+                       kwargs={'username': self.request.user.username})
+
+
+class PostCreateView(LoginRequiredMixin,
+                     PostMixin,
+                     PostSuccessUrlMixin,
+                     CreateView):
     """Добавление публикации."""
     form_class = PostForm
 
@@ -107,10 +116,6 @@ class PostCreateView(LoginRequiredMixin, PostMixin, CreateView):
         self.object = form.save(commit=False)
         self.object.save()
         return super().form_valid(form)
-
-    def get_success_url(self):
-        return reverse('blog:profile',
-                       kwargs={'username': self.request.user.username})
 
 
 class PostUpdateView(PostMixin,
@@ -133,6 +138,7 @@ class PostUpdateView(PostMixin,
 
 class PostDeleteView(PostMixin,
                      LoginRequiredMixin,
+                     PostSuccessUrlMixin,
                      DeleteView):
     """Удаление публикации."""
     template_name = 'blog/create.html'
@@ -144,16 +150,39 @@ class PostDeleteView(PostMixin,
         self.kwargs['pk'] = kwargs['post_id']
         return super().dispatch(request, *args, **kwargs)
 
-    def get_success_url(self):
-        return reverse('blog:profile',
-                       kwargs={'username': self.request.user.username})
 
-
-class CommentCreateView(LoginRequiredMixin, CreateView):
-    """Добавление комментария."""
+class CommentMixin:
+    """Mixin для комментариев."""
     model = Comment
-    form_class = CommentForm
     template_name = 'blog/comment.html'
+    form_class = CommentForm
+
+
+class CommentDispatchMixin:
+    """Mixin для проверки доступа к редактированию и удалению комментария."""
+
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if self.object.author != request.user:
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+
+class CommentSuccessUrlMixin:
+    """
+    Mixin для переадресации после создания или редактирования комментария.
+    """
+
+    def get_success_url(self):
+        post_id = self.kwargs['post_id']
+        return reverse('blog:post_detail', kwargs={'pk': post_id})
+
+
+class CommentCreateView(CommentMixin,
+                        LoginRequiredMixin,
+                        CommentSuccessUrlMixin,
+                        CreateView):
+    """Добавление комментария."""
 
     def form_valid(self, form):
         form.instance.author = get_object_or_404(
@@ -162,39 +191,22 @@ class CommentCreateView(LoginRequiredMixin, CreateView):
             Post, id=self.kwargs['post_id'])
         return super().form_valid(form)
 
-    def get_success_url(self):
-        post_id = self.kwargs['post_id']
-        return reverse('blog:post_detail', kwargs={'pk': post_id})
 
-
-class CommentUpdateView(LoginRequiredMixin, UpdateView):
+class CommentUpdateView(CommentMixin,
+                        LoginRequiredMixin,
+                        CommentDispatchMixin,
+                        CommentSuccessUrlMixin,
+                        UpdateView):
     """Редактирование комментария."""
-    model = Comment
-    form_class = CommentForm
-    template_name = 'blog/comment.html'
-
-    def dispatch(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        if self.object.author != request.user:
-            raise PermissionDenied
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_success_url(self):
-        post_id = self.kwargs['post_id']
-        return reverse('blog:post_detail', kwargs={'pk': post_id})
+    pass
 
 
-class CommentDeleteView(LoginRequiredMixin, DeleteView):
+class CommentDeleteView(CommentMixin,
+                        LoginRequiredMixin,
+                        CommentDispatchMixin,
+                        DeleteView):
     """Удаление комментария."""
-    model = Comment
-    template_name = 'blog/comment.html'
     success_url = reverse_lazy('blog:index')
-
-    def dispatch(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        if self.object.author != request.user:
-            raise PermissionDenied
-        return super().dispatch(request, *args, **kwargs)
 
 
 class ProfileDetailView(DetailView):
