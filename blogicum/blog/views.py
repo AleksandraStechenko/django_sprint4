@@ -110,10 +110,6 @@ class PostCreateView(LoginRequiredMixin,
 
     def form_valid(self, form):
         form.instance.author = self.request.user
-        if 'image' in self.request.FILES:
-            form.instance.image = self.request.FILES['image']
-        self.object = form.save(commit=False)
-        self.object.save()
         return super().form_valid(form)
 
 
