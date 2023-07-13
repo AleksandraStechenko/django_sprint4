@@ -34,6 +34,6 @@ urlpatterns = [
          CommentDeleteView.as_view(), name='delete_comment'),
     path('profile/<slug:username>/',
          ProfileDetailView.as_view(), name='profile'),
-    path('user/<slug:username>/update',
+    path('user/<slug:username>/update/',
          ProfileUpdateView.as_view(), name='edit_profile')
 ]

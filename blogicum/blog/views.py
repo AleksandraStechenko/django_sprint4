@@ -2,7 +2,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Count
-from django.shortcuts import get_object_or_404, redirect, render
+from django.http import Http404
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.views.generic import (
@@ -10,6 +11,13 @@ from django.views.generic import (
 )
 
 from .forms import CommentForm, PostForm, ProfileForm
+from .mixins import (
+    CommentDispatchMixin,
+    CommentMixin,
+    CommentSuccessUrlMixin,
+    PostMixin,
+    PostSuccessUrlMixin
+)
 from .models import Category, Comment, Post, User
 
 
@@ -23,23 +31,23 @@ class CategoryListView(ListView):
     context_object_name = 'post_list'
     paginate_by = PUBLICATIONS_PER_PAGE
 
+    def get_category(self):
+        return get_object_or_404(
+            Category,
+            slug=self.kwargs['category_slug'],
+            is_published=True
+        )
+
     def get_queryset(self):
-        category = get_object_or_404(Category,
-                                     slug=self.kwargs['category_slug'],
-                                     is_published=True)
         return Post.objects.filter(
-            category=category,
+            category=self.get_category(),
             is_published=True,
             pub_date__lte=timezone.now()
         ).order_by('-pub_date').annotate(comment_count=Count('comments'))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['comment_count'] = Comment.objects.count()
-        context['category'
-                ] = get_object_or_404(Category,
-                                      slug=self.kwargs['category_slug'],
-                                      is_published=True)
+        context['category'] = self.get_category()
         return context
 
 
@@ -80,25 +88,9 @@ class PostDetailView(DetailView):
     def get(self, request, *args, **kwargs):
         self.object = self.get_object()
         if not self.object.is_published and self.object.author != request.user:
-            return render(request, 'pages/404.html', status=404)
+            raise Http404()
         context = self.get_context_data(object=self.object)
         return self.render_to_response(context)
-
-
-class PostMixin:
-    """Mixin для публикаций."""
-    model = Post
-    template_name = 'blog/create.html'
-
-
-class PostSuccessUrlMixin:
-    """
-    Mixin для переадресации после создания или удаления поста.
-    """
-
-    def get_success_url(self):
-        return reverse('blog:profile',
-                       kwargs={'username': self.request.user.username})
 
 
 class PostCreateView(LoginRequiredMixin,
@@ -144,33 +136,6 @@ class PostDeleteView(PostMixin,
             raise PermissionDenied
         self.kwargs['pk'] = kwargs['post_id']
         return super().dispatch(request, *args, **kwargs)
-
-
-class CommentMixin:
-    """Mixin для комментариев."""
-    model = Comment
-    template_name = 'blog/comment.html'
-    form_class = CommentForm
-
-
-class CommentDispatchMixin:
-    """Mixin для проверки доступа к редактированию и удалению комментария."""
-
-    def dispatch(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        if self.object.author != request.user:
-            raise PermissionDenied
-        return super().dispatch(request, *args, **kwargs)
-
-
-class CommentSuccessUrlMixin:
-    """
-    Mixin для переадресации после создания или редактирования комментария.
-    """
-
-    def get_success_url(self):
-        post_id = self.kwargs['post_id']
-        return reverse('blog:post_detail', kwargs={'pk': post_id})
 
 
 class CommentCreateView(CommentMixin,
@@ -255,12 +220,6 @@ class ProfileUpdateView(LoginRequiredMixin, UpdateView):
     template_name = 'blog/user.html'
     slug_url_kwarg = 'username'
     slug_field = 'username'
-
-    def get_queryset(self):
-        self.author = get_object_or_404(
-            User, username=self.request.user
-        )
-        return User.objects.filter(username=self.request.user)
 
     def get_success_url(self):
         return reverse(
